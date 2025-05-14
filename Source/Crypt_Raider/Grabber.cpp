@@ -32,9 +32,11 @@ void UGrabber::TickComponent(float DeltaTime, ELevelTick TickType, FActorCompone
 
 	UPhysicsHandleComponent* PhysicsHandlePtr = GetPhysicsHandle();
 
-	FVector TargetLocation = GetComponentLocation() + GetForwardVector() * HoldDistance;
-	PhysicsHandlePtr->SetTargetLocationAndRotation(TargetLocation, GetComponentRotation());
-
+	if (PhysicsHandlePtr->GetGrabbedComponent() != nullptr)
+	{
+		FVector TargetLocation = GetComponentLocation() + GetForwardVector() * HoldDistance;
+		PhysicsHandlePtr->SetTargetLocationAndRotation(TargetLocation, GetComponentRotation());
+	}
 	
 }
 
@@ -57,18 +59,8 @@ void UGrabber::Grab(){
 	DrawDebugLine(GetWorld(), SweepStartVec, SweepEndVec, FColor::Red); // Draw a debug line from the start vector to the end vector
 	DrawDebugSphere(GetWorld(), SweepEndVec, 10, 10, FColor::Red, false, 5); // draw debug sphere at end of grab reach*/
 
-	FVector SweepStartVec = GetComponentLocation(); // Get the current location of the owners component
-	FVector SweepEndVec = SweepStartVec + (GetForwardVector() * Reach); // Get the forward vector of the owners component and multiply it by 100 to get the end vector
-
-	FCollisionShape Sphere = FCollisionShape::MakeSphere(GrabberRadius); // Create a sphere with a radius of 10 to use for the sweep
-	FHitResult OutHitResult; // Create a hit result struct to be populated with results of the sweep ITS AN OUT PARAMETER
-	bool HasHit = GetWorld()->SweepSingleByChannel(OutHitResult,
-		 SweepStartVec, 						// The start vector of the sweep
-		 SweepEndVec,							// The end vector of the sweep
-		 FQuat::Identity, 						// FQuat::Identity is the rotation of the sphere, it means no rotation
-		 ECC_GameTraceChannel2, 				// ECC_GameTraceChannel2 is the collision channel to use, this is the Grabber channel
-		 Sphere); 								// Create a sphere with a radius of 10 to use for the sweep		 
-		
+	FHitResult OutHitResult;
+	bool HasHit = GetGrabbableInReach(OutHitResult);
 	if(HasHit){
 
 		/* AActor* HitActor = OutHitResultStruct.GetActor(); // make a pointer to the actor that was hit by the sweep
@@ -83,8 +75,10 @@ void UGrabber::Grab(){
 		DrawDebugSphere(GetWorld(), HitImpact, 10, 10, FColor::Yellow, false, 10); // this is the one we want 
 		*/
 
+		UPrimitiveComponent* HitComponentPtr = OutHitResult.GetComponent();
+		HitComponentPtr->WakeAllRigidBodies();
 		PhysicsHandlePtr->GrabComponentAtLocationWithRotation(
-			OutHitResult.GetComponent(),
+			HitComponentPtr,
 			NAME_None,
 			OutHitResult.ImpactPoint,
 			GetComponentRotation()
@@ -97,7 +91,18 @@ void UGrabber::Grab(){
 
 void UGrabber::Release(){
 
+	UPhysicsHandleComponent* PhysicsHandlePtr = GetPhysicsHandle();
 	UE_LOG(LogTemp, Display, TEXT("RELEASED!"));
+
+	if(PhysicsHandlePtr->GetGrabbedComponent() != nullptr){
+
+		PhysicsHandlePtr->GetGrabbedComponent()->WakeAllRigidBodies();
+		PhysicsHandlePtr->ReleaseComponent();
+	}
+	else{
+		return;
+	}
+	
 };
 
 
@@ -111,4 +116,21 @@ UPhysicsHandleComponent* UGrabber::GetPhysicsHandle() const
 	}
 	
 	return PhysicsHandlePtr;
+}
+
+bool UGrabber::GetGrabbableInReach(FHitResult& OutHitResult) const{
+
+	FVector SweepStartVec = GetComponentLocation(); // Get the current location of the owners component
+	FVector SweepEndVec = SweepStartVec + (GetForwardVector() * Reach); // Get the forward vector of the owners component and multiply it by 100 to get the end vector
+
+	FCollisionShape Sphere = FCollisionShape::MakeSphere(GrabberRadius); // Create a sphere with a radius of 10 to use for the sweep
+	bool HasHit = GetWorld()->SweepSingleByChannel(OutHitResult,
+		 SweepStartVec, 						// The start vector of the sweep
+		 SweepEndVec,							// The end vector of the sweep
+		 FQuat::Identity, 						// FQuat::Identity is the rotation of the sphere, it means no rotation
+		 ECC_GameTraceChannel2, 				// ECC_GameTraceChannel2 is the collision channel to use, this is the Grabber channel
+		 Sphere); 								// Create a sphere with a radius of 10 to use for the sweep		
+		 
+	return HasHit;
+	
 }
